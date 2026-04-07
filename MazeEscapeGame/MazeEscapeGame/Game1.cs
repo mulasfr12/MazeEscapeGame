@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -19,6 +20,7 @@ namespace MazeEscapeGame
         private Texture2D    _overlayPixel;
 
         private GameState _state;
+        private string    _gameOverReason = "";
 
         // -------------------------------------------------------------------------
 
@@ -73,16 +75,14 @@ namespace MazeEscapeGame
                 case GameState.Playing:
                     _levelManager.Update(gameTime);
 
-                    if (_levelManager.IsTimeUp)
-                    {
-                        _state = GameState.GameOver;
-                        break;
-                    }
+                    if (CheckGameOver()) break;
 
                     var dir = _inputHandler.GetMoveDirection();
                     if (dir.HasValue)
                     {
-                        _levelManager.Player.TryMove(dir.Value, _levelManager.CurrentMaze);
+                        _levelManager.MovePlayer(dir.Value);
+
+                        if (CheckGameOver()) break;
 
                         if (_levelManager.PlayerReachedExit())
                         {
@@ -112,6 +112,20 @@ namespace MazeEscapeGame
             base.Update(gameTime);
         }
 
+        // Returns true and transitions to GameOver if a lose condition is met.
+        private bool CheckGameOver()
+        {
+            if (_levelManager.IsPlayerCaught || _levelManager.IsTimeUp)
+            {
+                _gameOverReason = _levelManager.IsPlayerCaught
+                    ? "Caught by an enemy!"
+                    : "Time's up!";
+                _state = GameState.GameOver;
+                return true;
+            }
+            return false;
+        }
+
         // -------------------------------------------------------------------------
 
         protected override void Draw(GameTime gameTime)
@@ -136,7 +150,7 @@ namespace MazeEscapeGame
                     break;
 
                 case GameState.GameOver:
-                    DrawGameOverOverlay();
+                    DrawGameOverScreen();
                     break;
             }
 
@@ -155,45 +169,55 @@ namespace MazeEscapeGame
                 GameSettings.WindowWidth,
                 GameSettings.WindowHeight);
 
-            _mazeRenderer.Draw(_levelManager.CurrentMaze, _levelManager.Player, camX, camY);
+            _mazeRenderer.Draw(
+                _levelManager.CurrentMaze,
+                _levelManager.Player,
+                _levelManager.Enemies,
+                camX, camY);
 
             DrawHud();
         }
 
         private void DrawHud()
         {
-            // Timer — turns red under 10 seconds
-            int secsLeft  = (int)System.Math.Ceiling(_levelManager.TimeRemaining);
-            int mins      = secsLeft / 60;
-            int secs      = secsLeft % 60;
-            string timer  = $"{mins}:{secs:D2}";
-            Color timerColour = secsLeft <= 10 ? ColourRed : Color.White;
-
-            _spriteBatch.DrawString(_font, $"Level: {_levelManager.CurrentLevel}",
+            // Level — top left
+            _spriteBatch.DrawString(_font,
+                $"Level: {_levelManager.CurrentLevel}",
                 new Vector2(10, 10), Color.White);
 
+            // Key indicator — below level
+            string keyText   = _levelManager.HasKey ? "KEY: FOUND" : "KEY: NEEDED";
+            Color  keyColour = _levelManager.HasKey ? ColourCyan : new Color(200, 140, 40);
+            _spriteBatch.DrawString(_font, keyText, new Vector2(10, 30), keyColour);
+
+            // Timer — top centre, turns red under 10 s
+            int secs    = Math.Max(0, (int)Math.Ceiling(_levelManager.TimeRemaining));
+            string timer = $"{secs / 60}:{secs % 60:D2}";
+            Color timerColour = secs <= 10 ? ColourRed : Color.White;
             var timerSize = _font.MeasureString(timer);
             _spriteBatch.DrawString(_font, timer,
                 new Vector2((GameSettings.WindowWidth - timerSize.X) / 2f, 10),
                 timerColour);
 
-            _spriteBatch.DrawString(_font, $"Score: {_levelManager.TotalScore}",
-                new Vector2(GameSettings.WindowWidth - 110, 10), Color.White);
+            // Score — top right
+            _spriteBatch.DrawString(_font,
+                $"Score: {_levelManager.TotalScore}",
+                new Vector2(GameSettings.WindowWidth - 120, 10), Color.White);
         }
 
         private void DrawStartScreen()
         {
-            DrawCentred("MAZE ESCAPE",            GameSettings.WindowHeight / 2 - 80, ColourYellow);
-            DrawCentred("Press ENTER to begin",   GameSettings.WindowHeight / 2 - 25, Color.White);
+            DrawCentred("MAZE ESCAPE",            GameSettings.WindowHeight / 2 - 85, ColourYellow);
+            DrawCentred("Press ENTER to begin",   GameSettings.WindowHeight / 2 - 30, Color.White);
             DrawCentred("WASD / Arrows  -  move", GameSettings.WindowHeight / 2 + 25, ColourGray);
-            DrawCentred("ESC  -  quit",            GameSettings.WindowHeight / 2 + 52, ColourGray);
+            DrawCentred("Find the KEY, reach the EXIT, survive!", GameSettings.WindowHeight / 2 + 52, ColourGray);
+            DrawCentred("ESC  -  quit",            GameSettings.WindowHeight / 2 + 78, ColourGray);
         }
 
         private void DrawLevelCompleteOverlay()
         {
             DrawRect(0, GameSettings.WindowHeight / 2 - 55,
-                     GameSettings.WindowWidth, 110,
-                     new Color(0, 0, 0, 185));
+                     GameSettings.WindowWidth, 110, new Color(0, 0, 0, 190));
 
             DrawCentred($"LEVEL {_levelManager.CurrentLevel} COMPLETE!",
                 GameSettings.WindowHeight / 2 - 35, ColourYellow);
@@ -203,19 +227,19 @@ namespace MazeEscapeGame
                 GameSettings.WindowHeight / 2 + 20, ColourGray);
         }
 
-        private void DrawGameOverOverlay()
+        private void DrawGameOverScreen()
         {
-            DrawCentred("GAME OVER",              GameSettings.WindowHeight / 2 - 45, ColourRed);
+            DrawCentred("GAME OVER",              GameSettings.WindowHeight / 2 - 55, ColourRed);
+            DrawCentred(_gameOverReason,           GameSettings.WindowHeight / 2 - 25, new Color(220, 180, 100));
             DrawCentred($"Final score: {_levelManager.TotalScore}",
-                GameSettings.WindowHeight / 2 - 10, Color.White);
+                GameSettings.WindowHeight / 2 + 5, Color.White);
             DrawCentred($"Reached level {_levelManager.CurrentLevel}",
-                GameSettings.WindowHeight / 2 + 18, ColourGray);
+                GameSettings.WindowHeight / 2 + 28, ColourGray);
             DrawCentred("Press ENTER to restart",
-                GameSettings.WindowHeight / 2 + 50, ColourGray);
+                GameSettings.WindowHeight / 2 + 58, ColourGray);
         }
 
         // -------------------------------------------------------------------------
-        // Helpers
 
         private void DrawCentred(string text, int y, Color colour)
         {
@@ -233,5 +257,6 @@ namespace MazeEscapeGame
         private static readonly Color ColourYellow = new Color(255, 220,  40);
         private static readonly Color ColourRed    = new Color(220,  60,  60);
         private static readonly Color ColourGray   = new Color(160, 160, 160);
+        private static readonly Color ColourCyan   = new Color(  0, 220, 200);
     }
 }

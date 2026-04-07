@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MazeEscapeGame.Core;
@@ -11,63 +12,90 @@ namespace MazeEscapeGame.Rendering
         private readonly Texture2D   _pixel;
         private readonly SpriteBatch _spriteBatch;
 
-        // Tile colours — dark dungeon palette
-        private static readonly Color ColourWall   = new Color( 28,  28,  45);
-        private static readonly Color ColourPath   = new Color(185, 178, 160);
-        private static readonly Color ColourStart  = new Color( 80, 200,  80);
-        private static readonly Color ColourExit   = new Color(255, 220,  40);
-        private static readonly Color ColourPlayer = new Color( 60, 130, 255);
+        // Full-brightness tile colours
+        private static readonly Color ColourWall       = new Color( 28,  28,  45);
+        private static readonly Color ColourPath       = new Color(185, 178, 160);
+        private static readonly Color ColourStart      = new Color( 80, 200,  80);
+        private static readonly Color ColourExit       = new Color(255, 220,  40);
+        private static readonly Color ColourLockedExit = new Color(180,  80,   0);
+        private static readonly Color ColourKey        = new Color(  0, 220, 200);
+        private static readonly Color ColourTrap       = new Color(160,   0, 180);
+        private static readonly Color ColourCoin       = new Color(255, 200,   0);
+        private static readonly Color ColourFog        = new Color(  5,   5,  10);
+        private static readonly Color ColourPlayer     = new Color( 60, 130, 255);
+        private static readonly Color ColourEnemy      = new Color(220,  50,  50);
 
         public MazeRenderer(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
         {
             _spriteBatch = spriteBatch;
 
-            // A single white 1x1 pixel; we tint it to draw any coloured rectangle.
-            // This is the standard MonoGame approach — there is no built-in shape API.
+            // Single white 1×1 pixel tinted to draw any coloured rectangle.
             _pixel = new Texture2D(graphicsDevice, 1, 1);
             _pixel.SetData(new[] { Color.White });
         }
 
-        // Draws the full maze then the player on top.
-        // cameraOffset is calculated by GetCameraOffset and is already clamped.
-        public void Draw(MazeGrid grid, Player player, int camOffsetX, int camOffsetY)
+        // -------------------------------------------------------------------------
+
+        public void Draw(MazeGrid grid, Player player, List<Enemy> enemies,
+                         int camOffsetX, int camOffsetY)
         {
-            int ts = GameSettings.TileSize;
+            int ts       = GameSettings.TileSize;
+            int fogR     = GameSettings.FogRadius;
+            var playerPos = player.Position;
 
             for (int x = 0; x < grid.Width; x++)
             {
                 for (int y = 0; y < grid.Height; y++)
                 {
-                    var colour = grid.GetTile(x, y) switch
-                    {
-                        TileType.Wall  => ColourWall,
-                        TileType.Path  => ColourPath,
-                        TileType.Start => ColourStart,
-                        TileType.Exit  => ColourExit,
-                        _              => ColourPath,
-                    };
+                    bool inSight  = MazeGrid.IsInSight(playerPos, x, y, fogR);
+                    bool revealed = grid.IsRevealed(x, y);
 
-                    _spriteBatch.Draw(
-                        _pixel,
+                    if (!revealed)
+                    {
+                        // Never seen — draw solid fog
+                        _spriteBatch.Draw(_pixel,
+                            new Rectangle(x * ts - camOffsetX, y * ts - camOffsetY, ts, ts),
+                            ColourFog);
+                        continue;
+                    }
+
+                    Color baseColour = TileColour(grid.GetTile(x, y));
+                    Color drawColour = inSight ? baseColour : Dim(baseColour, 0.35f);
+
+                    _spriteBatch.Draw(_pixel,
                         new Rectangle(x * ts - camOffsetX, y * ts - camOffsetY, ts, ts),
-                        colour);
+                        drawColour);
                 }
             }
 
-            // Player is drawn inset by 4px on each side so it sits visually inside the tile.
-            int inset = 4;
-            _spriteBatch.Draw(
-                _pixel,
+            // Enemies — only visible inside the player's current sight radius
+            foreach (var enemy in enemies)
+            {
+                if (!MazeGrid.IsInSight(playerPos, enemy.Position.X, enemy.Position.Y, fogR))
+                    continue;
+
+                int inset = 3;
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(
+                        enemy.Position.X * ts - camOffsetX + inset,
+                        enemy.Position.Y * ts - camOffsetY + inset,
+                        ts - inset * 2,
+                        ts - inset * 2),
+                    ColourEnemy);
+            }
+
+            // Player (always on top)
+            int pInset = 4;
+            _spriteBatch.Draw(_pixel,
                 new Rectangle(
-                    player.Position.X * ts - camOffsetX + inset,
-                    player.Position.Y * ts - camOffsetY + inset,
-                    ts - inset * 2,
-                    ts - inset * 2),
+                    playerPos.X * ts - camOffsetX + pInset,
+                    playerPos.Y * ts - camOffsetY + pInset,
+                    ts - pInset * 2,
+                    ts - pInset * 2),
                 ColourPlayer);
         }
 
-        // Returns a camera offset that centres on the player, clamped so the
-        // viewport never shows space outside the maze boundaries.
+        // Returns a camera offset centred on the player, clamped to maze bounds.
         public (int x, int y) GetCameraOffset(Position playerPos, MazeGrid grid,
                                                int screenWidth, int screenHeight)
         {
@@ -84,5 +112,24 @@ namespace MazeEscapeGame.Rendering
 
             return (camX, camY);
         }
+
+        // -------------------------------------------------------------------------
+
+        private static Color TileColour(TileType tile) => tile switch
+        {
+            TileType.Wall       => ColourWall,
+            TileType.Path       => ColourPath,
+            TileType.Start      => ColourStart,
+            TileType.Exit       => ColourExit,
+            TileType.LockedExit => ColourLockedExit,
+            TileType.Key        => ColourKey,
+            TileType.Trap       => ColourTrap,
+            TileType.Coin       => ColourCoin,
+            _                   => ColourPath,
+        };
+
+        // Darkens a colour for the "seen but not currently visible" fog effect.
+        private static Color Dim(Color c, float factor) =>
+            new Color((int)(c.R * factor), (int)(c.G * factor), (int)(c.B * factor), c.A);
     }
 }

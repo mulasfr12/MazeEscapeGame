@@ -70,7 +70,7 @@ namespace MazeEscapeGame.Core
 
             // --- Place exit at the cell furthest from start (BFS) ---
             var exitPos = FindFurthestWalkable(grid, startPos);
-            grid.SetTile(exitPos, TileType.Exit);
+            grid.SetTile(exitPos, TileType.LockedExit); // unlocked by key at runtime
             grid.ExitPosition = exitPos;
         }
 
