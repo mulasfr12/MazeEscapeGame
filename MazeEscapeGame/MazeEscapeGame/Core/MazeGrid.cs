@@ -4,14 +4,10 @@ using MazeEscapeGame.Models;
 
 namespace MazeEscapeGame.Core
 {
-    // The grid uses a (2n+1) x (2n+1) layout where:
-    //   - Odd-indexed cells are walkable rooms carved by the generator
-    //   - Even-indexed cells are walls unless carved as a passage
-    // Cell (cx, cy) in generator space maps to tile (2*cx+1, 2*cy+1).
     public class MazeGrid
     {
         private readonly TileType[,] _tiles;
-        private readonly bool[,]     _revealed; // tiles the player has ever seen
+        private readonly bool[,]     _revealed;
 
         public int Width  { get; }
         public int Height { get; }
@@ -42,18 +38,13 @@ namespace MazeEscapeGame.Core
 
         public bool InBounds(Position p) => InBounds(p.X, p.Y);
 
-        // LockedExit blocks movement until the key is collected and it is converted to Exit.
         public bool IsWalkable(Position p) =>
             InBounds(p) &&
             _tiles[p.X, p.Y] != TileType.Wall &&
             _tiles[p.X, p.Y] != TileType.LockedExit;
 
-        // -------------------------------------------------------------------------
-        // Fog of war
-
         public bool IsRevealed(int x, int y) => _revealed[x, y];
 
-        // Circular sight check using squared distance to avoid sqrt.
         public static bool IsInSight(Position center, int x, int y, int radius)
         {
             int dx = x - center.X;
@@ -61,7 +52,6 @@ namespace MazeEscapeGame.Core
             return dx * dx + dy * dy <= radius * radius;
         }
 
-        // Permanently marks all tiles within radius of center as revealed.
         public void Reveal(Position center, int radius)
         {
             int xMin = Math.Max(0, center.X - radius);
@@ -75,10 +65,6 @@ namespace MazeEscapeGame.Core
                         _revealed[x, y] = true;
         }
 
-        // -------------------------------------------------------------------------
-        // Item / enemy placement helpers
-
-        // Returns all tiles currently typed as Path (available for placing items).
         public List<Position> GetPathTiles()
         {
             var list = new List<Position>();

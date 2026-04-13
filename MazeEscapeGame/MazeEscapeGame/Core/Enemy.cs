@@ -5,13 +5,12 @@ using MazeEscapeGame.Models;
 
 namespace MazeEscapeGame.Core
 {
-    // Roaming enemy: moves to a random walkable neighbour every MoveInterval seconds.
     public class Enemy
     {
         private static readonly (int dx, int dy)[] Directions =
             { (0, -1), (0, 1), (-1, 0), (1, 0) };
 
-        private const double MoveInterval = 0.6; // seconds between steps
+        private const double MoveInterval = 0.6;
 
         public Position Position { get; private set; }
 

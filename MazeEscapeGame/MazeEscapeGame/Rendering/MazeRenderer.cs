@@ -12,13 +12,14 @@ namespace MazeEscapeGame.Rendering
         private readonly Texture2D   _pixel;
         private readonly SpriteBatch _spriteBatch;
 
-        // Full-brightness tile colours
         private static readonly Color ColourWall       = new Color( 28,  28,  45);
         private static readonly Color ColourPath       = new Color(185, 178, 160);
         private static readonly Color ColourStart      = new Color( 80, 200,  80);
-        private static readonly Color ColourExit       = new Color(255, 220,  40);
+        private static readonly Color ColourExitBase   = new Color(255, 220,  40);
+        private static readonly Color ColourExitPulse  = new Color(255, 255, 130);
         private static readonly Color ColourLockedExit = new Color(180,  80,   0);
-        private static readonly Color ColourKey        = new Color(  0, 220, 200);
+        private static readonly Color ColourKeyBase    = new Color(  0, 220, 200);
+        private static readonly Color ColourKeyShimmer = new Color(180, 255, 255);
         private static readonly Color ColourTrap       = new Color(160,   0, 180);
         private static readonly Color ColourCoin       = new Color(255, 200,   0);
         private static readonly Color ColourFog        = new Color(  5,   5,  10);
@@ -28,20 +29,21 @@ namespace MazeEscapeGame.Rendering
         public MazeRenderer(GraphicsDevice graphicsDevice, SpriteBatch spriteBatch)
         {
             _spriteBatch = spriteBatch;
-
-            // Single white 1×1 pixel tinted to draw any coloured rectangle.
             _pixel = new Texture2D(graphicsDevice, 1, 1);
             _pixel.SetData(new[] { Color.White });
         }
 
-        // -------------------------------------------------------------------------
-
         public void Draw(MazeGrid grid, Player player, List<Enemy> enemies,
-                         int camOffsetX, int camOffsetY)
+                         double totalSeconds, int camOffsetX, int camOffsetY)
         {
-            int ts       = GameSettings.TileSize;
-            int fogR     = GameSettings.FogRadius;
+            int ts        = GameSettings.TileSize;
+            int fogR      = GameSettings.FogRadius;
             var playerPos = player.Position;
+
+            float exitPulse  = (float)(Math.Sin(totalSeconds * 3.5) * 0.5 + 0.5);
+            float keyShimmer = (float)(Math.Sin(totalSeconds * 5.0) * 0.5 + 0.5);
+            Color exitColour = Color.Lerp(ColourExitBase,  ColourExitPulse,  exitPulse  * 0.6f);
+            Color keyColour  = Color.Lerp(ColourKeyBase,   ColourKeyShimmer, keyShimmer * 0.45f);
 
             for (int x = 0; x < grid.Width; x++)
             {
@@ -52,40 +54,50 @@ namespace MazeEscapeGame.Rendering
 
                     if (!revealed)
                     {
-                        // Never seen — draw solid fog
                         _spriteBatch.Draw(_pixel,
                             new Rectangle(x * ts - camOffsetX, y * ts - camOffsetY, ts, ts),
                             ColourFog);
                         continue;
                     }
 
-                    Color baseColour = TileColour(grid.GetTile(x, y));
-                    Color drawColour = inSight ? baseColour : Dim(baseColour, 0.35f);
+                    var tileType = grid.GetTile(x, y);
+                    Color base_  = TileColour(tileType, exitColour, keyColour);
+                    Color drawn  = inSight ? base_ : Dim(base_, 0.35f);
+
+                    bool isWall = tileType == TileType.Wall;
+                    int w = isWall ? ts : ts - 1;
+                    int h = isWall ? ts : ts - 1;
 
                     _spriteBatch.Draw(_pixel,
-                        new Rectangle(x * ts - camOffsetX, y * ts - camOffsetY, ts, ts),
-                        drawColour);
+                        new Rectangle(x * ts - camOffsetX, y * ts - camOffsetY, w, h),
+                        drawn);
                 }
             }
 
-            // Enemies — only visible inside the player's current sight radius
             foreach (var enemy in enemies)
             {
                 if (!MazeGrid.IsInSight(playerPos, enemy.Position.X, enemy.Position.Y, fogR))
                     continue;
 
-                int inset = 3;
+                const int eInset = 4;
                 _spriteBatch.Draw(_pixel,
                     new Rectangle(
-                        enemy.Position.X * ts - camOffsetX + inset,
-                        enemy.Position.Y * ts - camOffsetY + inset,
-                        ts - inset * 2,
-                        ts - inset * 2),
+                        enemy.Position.X * ts - camOffsetX + eInset,
+                        enemy.Position.Y * ts - camOffsetY + eInset,
+                        ts - eInset * 2,
+                        ts - eInset * 2),
                     ColourEnemy);
+
+                const int dot = 4;
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(
+                        enemy.Position.X * ts - camOffsetX + ts / 2 - dot / 2,
+                        enemy.Position.Y * ts - camOffsetY + ts / 2 - dot / 2,
+                        dot, dot),
+                    Color.White);
             }
 
-            // Player (always on top)
-            int pInset = 4;
+            const int pInset = 5;
             _spriteBatch.Draw(_pixel,
                 new Rectangle(
                     playerPos.X * ts - camOffsetX + pInset,
@@ -93,9 +105,16 @@ namespace MazeEscapeGame.Rendering
                     ts - pInset * 2,
                     ts - pInset * 2),
                 ColourPlayer);
+
+            const int pdot = 4;
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(
+                    playerPos.X * ts - camOffsetX + ts / 2 - pdot / 2,
+                    playerPos.Y * ts - camOffsetY + ts / 2 - pdot / 2,
+                    pdot, pdot),
+                Color.White);
         }
 
-        // Returns a camera offset centred on the player, clamped to maze bounds.
         public (int x, int y) GetCameraOffset(Position playerPos, MazeGrid grid,
                                                int screenWidth, int screenHeight)
         {
@@ -113,22 +132,20 @@ namespace MazeEscapeGame.Rendering
             return (camX, camY);
         }
 
-        // -------------------------------------------------------------------------
+        private static Color TileColour(TileType tile, Color exitColour, Color keyColour) =>
+            tile switch
+            {
+                TileType.Wall       => ColourWall,
+                TileType.Path       => ColourPath,
+                TileType.Start      => ColourStart,
+                TileType.Exit       => exitColour,
+                TileType.LockedExit => ColourLockedExit,
+                TileType.Key        => keyColour,
+                TileType.Trap       => ColourTrap,
+                TileType.Coin       => ColourCoin,
+                _                   => ColourPath,
+            };
 
-        private static Color TileColour(TileType tile) => tile switch
-        {
-            TileType.Wall       => ColourWall,
-            TileType.Path       => ColourPath,
-            TileType.Start      => ColourStart,
-            TileType.Exit       => ColourExit,
-            TileType.LockedExit => ColourLockedExit,
-            TileType.Key        => ColourKey,
-            TileType.Trap       => ColourTrap,
-            TileType.Coin       => ColourCoin,
-            _                   => ColourPath,
-        };
-
-        // Darkens a colour for the "seen but not currently visible" fog effect.
         private static Color Dim(Color c, float factor) =>
             new Color((int)(c.R * factor), (int)(c.G * factor), (int)(c.B * factor), c.A);
     }

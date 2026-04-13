@@ -6,9 +6,9 @@ namespace MazeEscapeGame.Models
         Path,
         Start,
         Exit,
-        LockedExit,   // exit before key is collected
-        Key,          // unlocks the exit
-        Trap,         // costs the player 10 seconds
-        Coin          // adds 50 bonus score
+        LockedExit,
+        Key,
+        Trap,
+        Coin
     }
 }

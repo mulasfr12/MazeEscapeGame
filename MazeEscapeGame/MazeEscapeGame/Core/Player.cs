@@ -12,7 +12,6 @@ namespace MazeEscapeGame.Core
             Position = startPosition;
         }
 
-        // Returns true if the move succeeded (target tile is walkable).
         public bool TryMove(Direction direction, MazeGrid grid)
         {
             var newPos = Position + DirectionToDelta(direction);

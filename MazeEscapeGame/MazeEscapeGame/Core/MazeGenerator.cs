@@ -4,23 +4,16 @@ using System.Collections.Generic;
 
 namespace MazeEscapeGame.Core
 {
-    // Generates a perfect maze using iterative randomised depth-first search
-    // (iterative backtracking), avoiding recursive stack overflows on large grids.
-    //
-    // Algorithm operates in "cell space" (n x n) and carves into the tile grid
-    // ((2n+1) x (2n+1)):
-    //   Cell (cx, cy)  →  tile (2*cx+1, 2*cy+1)
-    //   Wall between (cx,cy) and neighbour (nx,ny) → tile at the midpoint
     public class MazeGenerator
     {
         private readonly Random _random;
 
         private static readonly (int dx, int dy)[] Directions =
         {
-            ( 0, -1), // up
-            ( 0,  1), // down
-            (-1,  0), // left
-            ( 1,  0), // right
+            ( 0, -1),
+            ( 0,  1),
+            (-1,  0),
+            ( 1,  0),
         };
 
         public MazeGenerator(Random random = null)
@@ -33,7 +26,6 @@ namespace MazeEscapeGame.Core
             int n = (grid.Width - 1) / 2;
             var visited = new bool[n, n];
 
-            // --- Iterative DFS backtracking ---
             var stack = new Stack<(int cx, int cy)>();
 
             CarveCell(grid, 0, 0);
@@ -53,9 +45,8 @@ namespace MazeEscapeGame.Core
 
                 var (nx, ny) = neighbours[_random.Next(neighbours.Count)];
 
-                // Carve the wall tile that sits between the two cells
-                int wallTileX = 2 * cx + 1 + (nx - cx); // midpoint x in tile space
-                int wallTileY = 2 * cy + 1 + (ny - cy); // midpoint y in tile space
+                int wallTileX = 2 * cx + 1 + (nx - cx);
+                int wallTileY = 2 * cy + 1 + (ny - cy);
                 grid.SetTile(wallTileX, wallTileY, TileType.Path);
 
                 CarveCell(grid, nx, ny);
@@ -63,18 +54,14 @@ namespace MazeEscapeGame.Core
                 stack.Push((nx, ny));
             }
 
-            // --- Place start at top-left cell ---
             var startPos = new Position(1, 1);
             grid.SetTile(startPos, TileType.Start);
             grid.StartPosition = startPos;
 
-            // --- Place exit at the cell furthest from start (BFS) ---
             var exitPos = FindFurthestWalkable(grid, startPos);
-            grid.SetTile(exitPos, TileType.LockedExit); // unlocked by key at runtime
+            grid.SetTile(exitPos, TileType.LockedExit);
             grid.ExitPosition = exitPos;
         }
-
-        // -------------------------------------------------------------------------
 
         private static void CarveCell(MazeGrid grid, int cx, int cy)
         {
@@ -95,8 +82,6 @@ namespace MazeEscapeGame.Core
             return list;
         }
 
-        // BFS from start; the last node dequeued is one of the furthest reachable
-        // tiles — guaranteed because BFS visits nodes in non-decreasing distance order.
         private static Position FindFurthestWalkable(MazeGrid grid, Position start)
         {
             var queue   = new Queue<Position>();

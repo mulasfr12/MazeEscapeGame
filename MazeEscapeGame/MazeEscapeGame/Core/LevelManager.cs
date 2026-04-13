@@ -16,16 +16,13 @@ namespace MazeEscapeGame.Core
         public Player      Player        { get; private set; }
         public List<Enemy> Enemies       { get; private set; }
 
-        // Timer
         public double TimeRemaining { get; private set; }
         public bool   IsTimeUp      => TimeRemaining <= 0;
 
-        // Score (cumulative across levels in the current run)
-        public int TotalScore { get; private set; }
-
-        // Phase 3 state
-        public bool HasKey          { get; private set; }
-        public bool IsPlayerCaught  { get; private set; }
+        public int  TotalScore     { get; private set; }
+        public bool HasKey         { get; private set; }
+        public bool IsPlayerCaught { get; private set; }
+        public bool WasTrapped     { get; private set; }
 
         private static double TimeLimitForLevel(int level) => 45.0 + level * 15.0;
 
@@ -34,8 +31,6 @@ namespace MazeEscapeGame.Core
             _random    = new Random();
             _generator = new MazeGenerator(_random);
         }
-
-        // -------------------------------------------------------------------------
 
         public void LoadLevel(int level)
         {
@@ -52,8 +47,6 @@ namespace MazeEscapeGame.Core
             PlaceItems();
 
             Player = new Player(CurrentMaze.StartPosition);
-
-            // Reveal the starting area immediately
             CurrentMaze.Reveal(Player.Position, GameSettings.FogRadius);
         }
 
@@ -65,9 +58,6 @@ namespace MazeEscapeGame.Core
 
         public void NextLevel() => LoadLevel(CurrentLevel + 1);
 
-        // -------------------------------------------------------------------------
-
-        // Called every frame while Playing.
         public void Update(GameTime gameTime)
         {
             if (TimeRemaining > 0)
@@ -81,28 +71,24 @@ namespace MazeEscapeGame.Core
             }
         }
 
-        // Handles movement plus all tile-interaction logic.
-        // Game1 calls this instead of Player.TryMove directly.
         public void MovePlayer(Direction direction)
         {
+            WasTrapped = false;
             var delta     = DirectionToDelta(direction);
             var targetPos = Player.Position + delta;
 
             if (!CurrentMaze.InBounds(targetPos)) return;
 
-            // LockedExit: only open it if the player has collected the key
             if (CurrentMaze.GetTile(targetPos) == TileType.LockedExit)
             {
                 if (!HasKey) return;
-                CurrentMaze.SetTile(targetPos, TileType.Exit); // unlock
+                CurrentMaze.SetTile(targetPos, TileType.Exit);
             }
 
             if (!Player.TryMove(direction, CurrentMaze)) return;
 
-            // Reveal new area
             CurrentMaze.Reveal(Player.Position, GameSettings.FogRadius);
 
-            // Tile effects on landing
             switch (CurrentMaze.GetTile(Player.Position))
             {
                 case TileType.Key:
@@ -116,17 +102,15 @@ namespace MazeEscapeGame.Core
                     break;
 
                 case TileType.Trap:
+                    WasTrapped    = true;
                     TimeRemaining = Math.Max(0, TimeRemaining - 10.0);
                     break;
             }
 
-            // Enemy collision after player moves into their tile
             foreach (var enemy in Enemies)
                 if (enemy.Position == Player.Position)
                     IsPlayerCaught = true;
         }
-
-        // -------------------------------------------------------------------------
 
         public void BankLevelScore()
         {
@@ -137,33 +121,21 @@ namespace MazeEscapeGame.Core
         public bool PlayerReachedExit() =>
             Player.Position == CurrentMaze.ExitPosition;
 
-        // -------------------------------------------------------------------------
-        // Item and enemy placement
-
         private void PlaceItems()
         {
             var pathTiles = CurrentMaze.GetPathTiles();
             Shuffle(pathTiles);
 
-            // Start and exit positions are non-Path tiles so they won't appear in
-            // pathTiles, but we still track them as reserved to skip nearby slots
-            // if needed in future. Currently used as an explicit safety guard.
             var reserved = new HashSet<Position>
             {
                 CurrentMaze.StartPosition,
                 CurrentMaze.ExitPosition,
             };
 
-            // Key — always one per level
-            Place(TileType.Key, 1, pathTiles, reserved);
-
-            // Traps — scale with level
+            Place(TileType.Key,  1,                pathTiles, reserved);
             Place(TileType.Trap, CurrentLevel + 1, pathTiles, reserved);
+            Place(TileType.Coin, 3,                pathTiles, reserved);
 
-            // Coins — fixed count
-            Place(TileType.Coin, 3, pathTiles, reserved);
-
-            // Enemies — level 1 has none, caps at 3
             int enemyCount = Math.Min(CurrentLevel - 1, 3);
             for (int i = 0; i < enemyCount; i++)
             {
@@ -185,11 +157,10 @@ namespace MazeEscapeGame.Core
             }
         }
 
-        // Returns the next position in the (already shuffled) list that isn't reserved.
         private static Position? PickNext(List<Position> tiles, HashSet<Position> reserved)
         {
             foreach (var p in tiles)
-                if (!reserved.Contains(p) && /* still Path */ true)
+                if (!reserved.Contains(p))
                     return p;
             return null;
         }
